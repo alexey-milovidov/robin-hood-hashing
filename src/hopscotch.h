@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <sstream>
+
 
 // HopScotch algorithm. Based on
 // http://mcg.cs.tau.ac.il/papers/disc2008-hopscotch.pdf
@@ -235,6 +237,80 @@ public:
     return _vals[0];
   }
 
+  void calc_statistics(float& avg_steps_when_element_there, float& avg_steps_when_element_not_there) {
+    size_t total_steps_there = 0;
+    size_t total_steps_not_there = 0;
+    for (size_t i=0; i<_max_size + Traits::HOP_SIZE; ++i) {
+      Traits::HopType hops = _hops[i] >> 1;
+
+      size_t steps = 1;
+      while (hops) {
+        if (hops & 1) {
+          total_steps_there += steps;
+        }
+        hops >>= 1;
+        ++steps;
+      }
+      total_steps_not_there += steps;
+    }
+    avg_steps_when_element_there = (float)total_steps_there / _size;
+    avg_steps_when_element_not_there = (float)total_steps_not_there / (_max_size + Traits::HOP_SIZE);
+  }
+
+  std::string hop_str(typename Traits::HopType hop) {
+    std::stringstream ss;
+    if (hop & 1) {
+      ss << "1:";
+    } else {
+      ss << ".:";
+    }
+    hop >>= 1;
+    for (size_t i=0; i<Traits::HOP_SIZE; ++i) {
+      if (hop & 1) {
+        ss << "1";
+      } else {
+        ss << ".";
+      }
+      hop >>= 1;
+    }
+    return ss.str();
+  }
+
+  /// recreates the hashmap and rearranges the data for better query speed.
+  void optimize_for_queries() {
+
+    Key* old_keys = _keys;
+    Val* old_vals = _vals;
+    Traits::HopType* old_hops = _hops;
+
+    init_data(_max_size);
+
+    for (size_t i=0; i<_max_size + Traits::HOP_SIZE; ++i) {
+      Traits::HopType hops = old_hops[i] >> 1;
+
+      size_t idx = i;
+      while (hops) {
+        if (hops & 1) {
+          insert_impl(std::move(old_keys[idx]), std::move(old_vals[idx]));
+          _alloc_val.destroy(old_vals + idx);
+          _alloc_key.destroy(old_keys + idx);
+        }
+        ++idx;
+        hops >>= 1;
+      }
+      /*
+      std::cout << "index " << i << std::endl 
+        << hop_str(old_hops[i]) << std::endl 
+        << hop_str(_hops[i]) << std::endl;
+      */
+      _alloc_hop.destroy(old_hops + i);
+    }
+
+    _alloc_val.deallocate(old_vals, _max_size);
+    _alloc_key.deallocate(old_keys, _max_size);
+    _alloc_hop.deallocate(old_hops, _max_size);
+  }
+
   inline size_t size() const {
     return _size;
   }
@@ -255,7 +331,18 @@ private:
     Traits::HopType* old_hops = _hops;
 
     size_t old_size = _max_size;
-    init_data(_max_size * Traits::RESIZE_PERCENTAGE / 100);
+
+    size_t new_size = _max_size * Traits::RESIZE_PERCENTAGE / 100;
+    if (new_size < old_size) {
+      // overflow! just double the size.
+      new_size = old_size*2;
+      if (new_size < old_size) {
+        // another overflow! break.
+        // TODO do something smart here
+        throw std::exception("can't resize");
+      }
+    }
+    init_data(new_size);
 
     for (size_t i=0; i<old_size + Traits::HOP_SIZE; ++i) {
       if (old_hops[i] & 1) {

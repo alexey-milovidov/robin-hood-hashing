@@ -187,7 +187,6 @@ void bench_str(size_t insertions, size_t queries, size_t times) {
 
 template<class T, class H>
 void bench1(size_t insertions, size_t queries, size_t times, T value) {
-
   MarsagliaMWC99 rand(insertions*5);
   const int seed = 23154;
 
@@ -201,6 +200,8 @@ void bench1(size_t insertions, size_t queries, size_t times, T value) {
         size_t x = rand();
         r.insert(x, std::move(value));
       }
+
+      r.optimize_for_queries();
     
       for (size_t i=0; i<queries; ++i) {
         bool success;
@@ -223,6 +224,7 @@ void bench1(size_t insertions, size_t queries, size_t times, T value) {
       for (size_t i=0; i<insertions; ++i) {
         r.insert(rand(), value);
       }
+      r.optimize_for_queries();
     
       for (size_t i=0; i<queries; ++i) {
         bool success;
@@ -245,6 +247,7 @@ void bench1(size_t insertions, size_t queries, size_t times, T value) {
       for (size_t i=0; i<insertions; ++i) {
         r.insert(rand(), value);
       }
+      r.optimize_for_queries();
     
       for (size_t i=0; i<queries; ++i) {
         bool success;
@@ -266,6 +269,7 @@ void bench1(size_t insertions, size_t queries, size_t times, T value) {
       for (size_t i=0; i<insertions; ++i) {
         r.insert(rand(), value);
       }
+      r.optimize_for_queries();
     
       for (size_t i=0; i<queries; ++i) {
         bool success;
@@ -635,16 +639,16 @@ int main(int argc, char** argv) {
   std::unordered_map<X, X, HashX> m;
   m[32] = 123;
 
-  size_t insertions = 2000*1000;
+  size_t insertions = 440*1000;
   size_t queries = 100*1000*1000;
   size_t times = 1;
 
 
   try {
-    test_compare_str(1000000);
+    //test_compare_str(1000000);
 
-    test_count(65434);
-    std::cout << "int, DummyHash" << std::endl;
+    //test_count(65434);
+    //std::cout << "int, DummyHash" << std::endl;
     bench1<int, DummyHash<size_t> >(insertions, queries, times, 1231);
 
 
