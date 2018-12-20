@@ -79,14 +79,18 @@ static inline uint64_t ror64(uint64_t v, int r) {
 	return (v >> r) | (v << (64 - r));
 }
 
+static uint64_t sCurrentFactor = UINT64_C(0xdfffdfe67118e291);
+
 static size_t quickmix(size_t h) {
 #if ROBIN_HOOD_BITNESS == 64
-	static size_t constexpr const factor = UINT64_C(0x220999681725bc2c);
+	// static size_t constexpr const factor = UINT64_C(0x220999681725bc2c); // 2596016 ops
+	// static size_t constexpr const factor = UINT64_C(0x9ac7e71bddeae25b); // 2670541 ops
+	size_t factor = sCurrentFactor;
+	// static size_t constexpr const factor = UINT64_C(0x1524682d087b5b5f); // 2198232 ops
 #else
 	static size_t constexpr const factor = UINT32_C(0x728e'a185);
 #endif
 	return factor * h;
-
 #if 0
 	h ^= h >> 33;
 	h *= 0xff51afd7ed558ccd;

@@ -344,3 +344,50 @@ TEST_CASE("show hash distribution") {
 		showHash(i);
 	}
 }
+
+TEST_CASE("count random stuff") {
+
+	printStaticHeaderOnce();
+
+	Rng factorRng(43);
+
+	size_t bestOps = (std::numeric_limits<size_t>::max)();
+	while (true) {
+		resetStaticCounts();
+		Rng rng(321);
+		size_t ops = bestOps;
+		size_t cap = 0;
+		{
+			try {
+				robin_hood::flat_map<Counter, Counter> map;
+				static const size_t maxVal = 10000;
+				for (int i = 0; i < 100'000; ++i) {
+					/*
+					map[rng(maxVal) << 0] = i;
+					map.erase(rng(maxVal) << 0);
+					map[rng(maxVal) << 32] = i;
+					map.erase(rng(maxVal) << 32);
+*/
+
+					for (size_t s = 0; s < 56; ++s) {
+						map[rng(maxVal) << s] = i;
+						map.erase(rng(maxVal) << s);
+					}
+				}
+				ops = sCountSwaps + sCountEquals;
+				cap = map.size() / map.load_factor();
+			} catch (std::overflow_error const&) {
+				// don't update ops
+			}
+		}
+		if (ops < bestOps) {
+			std::stringstream ss;
+			ss << "cap=" << cap << ", for 0x" << std::setfill('0') << std::setw(16) << std::hex << robin_hood::detail::sCurrentFactor;
+			printStaticCounts(ss.str());
+			bestOps = ops;
+		}
+
+		// update at last so first run is done with currently set factor
+		robin_hood::detail::sCurrentFactor = factorRng() | 1;
+	}
+}

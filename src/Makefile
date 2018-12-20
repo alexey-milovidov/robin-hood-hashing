@@ -1,4 +1,4 @@
-CXX = ccache g++ -ggdb -O2 -std=c++14 -Wall -Werror
+CXX = ccache g++ -ggdb -O2 -std=c++14 -Wall
 LD = g++
 
 SRC_DIR := test
