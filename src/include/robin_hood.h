@@ -808,12 +808,14 @@ private:
 	}
 
 	// forwards the index by one, wrapping around at the end
-	void next(int* info, size_t* idx) const {
+	template <typename InfoType>
+	void next(InfoType* info, size_t* idx) const {
 		*idx = (*idx + 1) & mMask;
 		++*info;
 	}
 
-	void nextWhileLess(int* info, size_t* idx) const {
+	template <typename InfoType>
+	void nextWhileLess(InfoType* info, size_t* idx) const {
 		// unrolling this by hand did not bring any speedups.
 		while (*info < mInfo[*idx]) {
 			next(info, idx);
@@ -821,42 +823,48 @@ private:
 	}
 
 	// Shift everything up by one element. Tries to move stuff around.
-	// True if some shifting has occured (entry under idx is a constructed object)
-	// Fals if no shift has occured (entry under idx is unconstructed memory)
+	// precondition: insertion_idx points to the occupied entry that has to be freed.
+	//   idx points to a free slot (right of insertion_idx)
+	// postcondition: move stuff up so insertion_idx can be moved to
 	void shiftUp(size_t idx, size_t const insertion_idx) {
-		while (idx != insertion_idx) {
-			size_t prev_idx = (idx - 1) & mMask;
-			if (mInfo[idx]) {
-				mKeyVals[idx] = std::move(mKeyVals[prev_idx]);
-			} else {
-				new (mKeyVals + idx) Node(std::move(mKeyVals[prev_idx]));
+		size_t targetIdx = idx;
+		do {
+			idx = (idx - 1) & mMask;
+			if (mInfo[(idx - 1) & mMask] + 1 != mInfo[idx]) {
+				if (mInfo[targetIdx]) {
+					mKeyVals[targetIdx] = std::move(mKeyVals[idx]);
+				} else {
+					new (mKeyVals + targetIdx) Node(std::move(mKeyVals[idx]));
+				}
+				mInfo[targetIdx] = static_cast<uint8_t>(mInfo[idx] + (targetIdx - idx) & mMask);
+				targetIdx = idx;
 			}
-			mInfo[idx] = static_cast<uint8_t>(mInfo[prev_idx] + 1);
-			if (0xFF == mInfo[idx]) {
-				mMaxNumElementsAllowed = 0;
-			}
-			idx = prev_idx;
-		}
+		} while (idx != insertion_idx);
 	}
 
-	void shiftDown(size_t idx) {
+	// precondition: idx points to the element that should be destroyed.
+	// postcondition: element at idx destroyed, other elements moved left.
+	void shiftDown(size_t targetIdx) {
 		// until we find one that is either empty or has zero offset.
 		// TODO we don't need to move everything, just the last one for the same bucket.
-		mKeyVals[idx].destroy(*this);
+		mKeyVals[targetIdx].destroy(*this);
 
 		// until we find one that is either empty or has zero offset.
-		size_t nextIdx = (idx + 1) & mMask;
-		while (mInfo[nextIdx] > 1) {
-			mInfo[idx] = static_cast<uint8_t>(mInfo[nextIdx] - 1);
-			mKeyVals[idx] = std::move(mKeyVals[nextIdx]);
-			idx = nextIdx;
-			nextIdx = (idx + 1) & mMask;
+		size_t idx = (targetIdx + 1) & mMask;
+		while (mInfo[idx] > 1) {
+			if (mInfo[idx] + 1 != mInfo[(idx + 1) & mMask]) {
+				mKeyVals[targetIdx] = std::move(mKeyVals[idx]);
+				mInfo[targetIdx] = static_cast<uint8_t>(mInfo[idx] - (idx - targetIdx) & mMask);
+				targetIdx = idx;
+			}
+			idx = (idx + 1) & mMask;
 		}
 
-		mInfo[idx] = 0;
+		// done!
+		mInfo[targetIdx] = 0;
 		// don't destroy, we've moved it
 		// mKeyVals[idx].destroy(*this);
-		mKeyVals[idx].~Node();
+		mKeyVals[targetIdx].~Node();
 	}
 
 	// copy of find(), except that it returns iterator instead of const_iterator.
@@ -1293,6 +1301,7 @@ private:
 		while (true) {
 			size_t idx = keyToIdx(key);
 
+			// info MUST be > uint8_t, so value 256 is possible.
 			int info = 1;
 			nextWhileLess(&info, &idx);
 
