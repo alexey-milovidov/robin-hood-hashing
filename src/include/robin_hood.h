@@ -499,7 +499,8 @@ template <typename Key, typename T, typename Hash, typename KeyEqual, bool IsFla
 class unordered_map : public Hash, public KeyEqual, detail::NodeAllocator<robin_hood::pair<Key, T>, 4, 16384, IsFlatMap> {
 	// configuration defaults
 	static constexpr size_t InitialNumElements = 4;
-
+	static constexpr int InfoInc = 1 << 4;
+	static constexpr int InfoMax = 0xFF - (InfoInc - 1);
 	using DataPool = detail::NodeAllocator<robin_hood::pair<Key, T>, 4, 16384, IsFlatMap>;
 
 public:
@@ -799,14 +800,17 @@ private:
 	}
 
 	template <typename HashKey>
-	size_t keyToIdx(HashKey&& key) const {
-		return Hash::operator()(key) & mMask;
+	void keyToIdx(HashKey&& key, size_t& idx, int& info) const {
+		auto h = Hash::operator()(key);
+		idx = h & mMask;
+		// uses some bits from the highest byte
+		info = InfoInc | (h >> (sizeof(h) * 7)) & (InfoInc - 1);
 	}
 
 	// forwards the index by one, wrapping around at the end
 	void next(int* info, size_t* idx) const {
 		*idx = (*idx + 1) & mMask;
-		++*info;
+		*info += InfoInc;
 	}
 
 	void nextWhileLess(int* info, size_t* idx) const {
@@ -827,8 +831,8 @@ private:
 			} else {
 				new (mKeyVals + idx) Node(std::move(mKeyVals[prev_idx]));
 			}
-			mInfo[idx] = static_cast<uint8_t>(mInfo[prev_idx] + 1);
-			if (0xFF == mInfo[idx]) {
+			mInfo[idx] = static_cast<uint8_t>(mInfo[prev_idx] + InfoInc);
+			if (InfoMax <= mInfo[idx]) {
 				mMaxNumElementsAllowed = 0;
 			}
 			idx = prev_idx;
@@ -842,8 +846,8 @@ private:
 
 		// until we find one that is either empty or has zero offset.
 		size_t nextIdx = (idx + 1) & mMask;
-		while (mInfo[nextIdx] > 1) {
-			mInfo[idx] = static_cast<uint8_t>(mInfo[nextIdx] - 1);
+		while (mInfo[nextIdx] >= 2 * InfoInc) {
+			mInfo[idx] = static_cast<uint8_t>(mInfo[nextIdx] - InfoInc);
 			mKeyVals[idx] = std::move(mKeyVals[nextIdx]);
 			idx = nextIdx;
 			nextIdx = (idx + 1) & mMask;
@@ -858,8 +862,9 @@ private:
 	// copy of find(), except that it returns iterator instead of const_iterator.
 	template <typename Other>
 	size_t findIdx(const Other& key) const {
-		size_t idx = keyToIdx(key);
-		int info = 1;
+		size_t idx;
+		int info;
+		keyToIdx(key, idx, info);
 		nextWhileLess(&info, &idx);
 
 		// check while info matches with the source idx
@@ -887,19 +892,20 @@ private:
 			throwOverflowError();
 		}
 
-		size_t idx = keyToIdx(keyval->first);
+		size_t idx;
+		int info;
+		keyToIdx(keyval->first, idx, info);
 
 		// skip forward. Use <= because we are certain that the element is not there.
-		int info = 1;
 		while (info <= mInfo[idx]) {
 			idx = (idx + 1) & mMask;
-			++info;
+			info += InfoInc;
 		}
 
 		// key not found, so we are now exactly where we want to insert it.
 		auto const insertion_idx = idx;
 		auto insertion_info = static_cast<uint8_t>(info);
-		if (0xFF == insertion_info) {
+		if (InfoMax <= insertion_info) {
 			mMaxNumElementsAllowed = 0;
 		}
 
@@ -1222,9 +1228,9 @@ public:
 	}
 
 	size_t erase(const key_type& key) {
-		size_t idx = keyToIdx(key);
-
-		int info = 1;
+		size_t idx;
+		int info;
+		keyToIdx(key, idx, info);
 		nextWhileLess(&info, &idx);
 
 		// check while info matches with the source idx
@@ -1287,9 +1293,9 @@ private:
 	template <typename Arg>
 	mapped_type& doCreateByKey(Arg&& key) {
 		while (true) {
-			size_t idx = keyToIdx(key);
-
-			int info = 1;
+			size_t idx;
+			int info;
+			keyToIdx(key, idx, info);
 			nextWhileLess(&info, &idx);
 
 			// while we potentially have a match
@@ -1310,7 +1316,7 @@ private:
 			// key not found, so we are now exactly where we want to insert it.
 			auto const insertion_idx = idx;
 			auto const insertion_info = static_cast<uint8_t>(info);
-			if (0xFF == insertion_info) {
+			if (InfoMax <= insertion_info) {
 				// might overflow next time, set to 0 so we increase size next time
 				mMaxNumElementsAllowed = 0;
 			}
@@ -1341,9 +1347,9 @@ private:
 	template <typename Arg>
 	std::pair<iterator, bool> doInsert(Arg&& keyval) {
 		while (true) {
-			size_t idx = keyToIdx(keyval.getFirst());
-
-			int info = 1;
+			size_t idx;
+			int info;
+			keyToIdx(keyval.getFirst(), idx, info);
 			nextWhileLess(&info, &idx);
 
 			// while we potentially have a match
@@ -1365,7 +1371,7 @@ private:
 			// key not found, so we are now exactly where we want to insert it.
 			const size_t insertion_idx = idx;
 			auto insertion_info = static_cast<uint8_t>(info);
-			if (0xFF == insertion_info) {
+			if (InfoMax <= insertion_info) {
 				mMaxNumElementsAllowed = 0;
 			}
 

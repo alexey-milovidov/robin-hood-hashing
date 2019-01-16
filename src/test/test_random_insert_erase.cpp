@@ -309,7 +309,7 @@ struct DummyHash {
 	}
 };
 
-TEMPLATE_TEST_CASE("collisions", "", (robin_hood::flat_map<CtorDtorVerifier, CtorDtorVerifier, DummyHash<CtorDtorVerifier>>),
+TEMPLATE_TEST_CASE("collisions", "[.]", (robin_hood::flat_map<CtorDtorVerifier, CtorDtorVerifier, DummyHash<CtorDtorVerifier>>),
 				   (robin_hood::node_map<CtorDtorVerifier, CtorDtorVerifier, DummyHash<CtorDtorVerifier>>)) {
 
 	// CtorDtorVerifier::mDoPrintDebugInfo = true;
@@ -434,7 +434,7 @@ TEST_CASE("random insertion brute force", "[!hide]") {
 	size_t min_ops = 1000;
 	uint64_t const n = 13;
 
-	Rng rng{0x6105f48f7969b86d, 0xa167fa91a795ea5e, 0x1f6664bdc85ee695, 99879};
+	Rng rng{ 0x920f04ed24e83bbf, 0x6cff719c756e8c46, 0x977a60c65dff9a8a, 107045 };
 	while (true) {
 		auto state = rng.state();
 		std::unordered_map<int, int> suo;
